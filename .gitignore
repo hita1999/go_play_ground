@@ -26,3 +26,4 @@ go.work
 
 # ignore token.json
 token.json
+credentials.json
