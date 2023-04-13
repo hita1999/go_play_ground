@@ -2,113 +2,97 @@ package main
 
 import (
 	"context"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"log"
-	//"net/http"
+	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
 
-var (
-	config *oauth2.Config
-	//client *http.Client
-)
-
-func tokenFromFile(tokenFile string) (*oauth2.Token, error) {
-	file, err := os.Open(tokenFile)
+// Retrieve a token, saves the token, then returns the generated client.
+func getClient(config *oauth2.Config) *http.Client {
+	// The file token.json stores the user's access and refresh tokens, and is
+	// created automatically when the authorization flow completes for the first time.
+	tokFile := "token.json"
+	tok, err := tokenFromFile(tokFile)
 	if err != nil {
-		return nil, err
+		tok = getTokenFromWeb(config)
+		saveToken(tokFile, tok)
 	}
-	defer file.Close()
-
-	token := &oauth2.Token{}
-	err = gob.NewDecoder(file).Decode(token)
-	if err != nil {
-		return nil, err
-	}
-
-	return token, nil
+	return config.Client(context.Background(), tok)
 }
 
-func getTokenFromWeb() (*oauth2.Token, error) {
+//Request a token from the web, then returns the retrieved token.
+func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the "+
-		"authorization code: \n%v\n", authURL)
+	fmt.Printf("Go to the following link in your browser then type the " + "autorization code: \n%v\n", authURL)
 
-	var code string
-	if _, err := fmt.Scan(&code); err != nil {
-		return nil, fmt.Errorf("unable to read authorization code: %v", err)
+	var authCode string
+	if _, err := fmt.Scan(&authCode); err != nil {
+		log.Fatalf("Unable to read authorization code: %v", err)
 	}
 
-	ctx := context.Background()
-	token, err := config.Exchange(ctx, code)
+	tok, err := config.Exchange(context.TODO(), authCode) 
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve token from web: %v", err)
+		log.Fatalf("Unable to retrieve token from web %v", err)
 	}
-
-	return token, nil
+	return tok
 }
 
-func saveToken(tokenFile string, token *oauth2.Token) {
-	file, err := os.Create(tokenFile)
+// Retrieves a token from a local file.
+func tokenFromFile(file string) (*oauth2.Token, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	tok := &oauth2.Token{}
+	err = json.NewDecoder(f).Decode(tok)
+	return tok, err
+}
+
+// Saves a token to a file path
+func saveToken(path string, token *oauth2.Token) {
+	fmt.Printf("Saving credential file to: %s\n", path)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Fatalf("Unable to cache oauth token: %v", err)
 	}
-	defer file.Close()
-
-	err = gob.NewEncoder(file).Encode(token)
-	if err != nil {
-		log.Fatalf("Unable to encode token to file: %v", err)
-	}
+	defer f.Close()
+	json.NewEncoder(f).Encode(token)
 }
 
-// func getClient(config *oauth2.Config, token *oauth2.Token) *http.Client {
-// 	return config.Client(oauth2.NoContext, token)
-// }
+
+
 
 func main() {
-	//Load credentials from .env file
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
-
-	//Set up Oauth2 config
 	ctx := context.Background()
-	config = &oauth2.Config{
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		Scopes: 	 []string{drive.DriveReadonlyScope},
-		Endpoint:     google.Endpoint,
-		RedirectURL: "urn:ietf:wg:oauth:2.0:oob",
-	}
-
-	//Load token from file or request authorization
-	token, err := tokenFromFile("token.json")
+	b, err := os.ReadFile("credentials.json")
 	if err != nil {
-		token, err = getTokenFromWeb()
-		if err != nil {
-			log.Fatalf("Unable to retrieve token from web: %v", err)
-		}
-		saveToken("token.json", token)
+		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	//Initialize Google Drive API client
-	//client := getClient(config, token)
-	srv, err := drive.NewService(ctx, option.WithTokenSource(config.TokenSource(ctx, token)))
+	// If modifying these scopes, delete your previously saved token.json.
+	config, err := google.ConfigFromJSON(b, drive.DriveMetadataReadonlyScope)
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
+	}
+	
+	client := getClient(config)
+
+	srv, err := drive.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		log.Fatalf("Unable to retrieve Drive client: %v", err)
 	}
 
 	// List files in the user's Google Drive
-    r, err := srv.Files.List().Fields("nextPageToken, files(name, size)").Do()
+    r, err := srv.Files.List().PageSize(100).Fields("nextPageToken, files(name, size)").Do()
     if err != nil {
         log.Fatalf("Unable to retrieve files: %v", err)
     }

@@ -3,8 +3,13 @@ module hello
 go 1.19
 
 require (
-	golang.org/x/oauth2 v0.6.0
-	google.golang.org/api v0.116.0
+	golang.org/x/oauth2 v0.7.0
+	google.golang.org/api v0.118.0
+)
+
+require (
+	github.com/google/s2a-go v0.1.0 // indirect
+	golang.org/x/crypto v0.1.0 // indirect
 )
 
 require (
@@ -15,7 +20,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.8.0 // indirect
-	github.com/joho/godotenv v1.5.1
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/net v0.9.0 // indirect
 	golang.org/x/sys v0.7.0 // indirect
